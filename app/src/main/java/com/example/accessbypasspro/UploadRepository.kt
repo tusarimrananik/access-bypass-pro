@@ -15,13 +15,14 @@ import java.io.IOException
 /**
  * Uploads images (Uri) to a backend endpoint using multipart/form-data.
  *
+ * Backend expectations (based on your updated Node/Express code):
+ * - file field name: "file"  (upload.single("file"))
+ * - optional text field: "folderPath" like "test/sub1/sub2"
+ *
  * Notes:
  * - Requires <uses-permission android:name="android.permission.INTERNET" /> in AndroidManifest.xml
- * - Requires OkHttp dependency in app/build.gradle:
+ * - OkHttp dependency:
  *   implementation("com.squareup.okhttp3:okhttp:4.12.0")
- *
- * IMPORTANT:
- * - Call suspend functions from a coroutine (e.g., with LaunchedEffect, viewModelScope, etc.)
  */
 class UploadRepository(
     private val client: OkHttpClient = OkHttpClient()
@@ -29,23 +30,34 @@ class UploadRepository(
 
     /**
      * Upload a single image Uri.
-     * @return Response body as String (or throws IOException on failure)
+     * If folderPath is provided, server will create/find nested folders and upload there.
+     * If a file with the same name already exists in that folder, server will update it.
      */
     @Throws(IOException::class)
     suspend fun uploadImageUri(
         context: Context,
         uri: Uri,
-        uploadUrl: String,              // e.g. "https://example.com/upload"
-        formFieldName: String = "image" // e.g. "image" or "file" depending on backend
+        uploadUrl: String,                    // e.g. "https://example.com/upload"
+        folderPath: String? = null,           // e.g. "test/sub1/sub2" or null/"" for root
+        fileFieldName: String = "file",       // MUST match backend: upload.single("file")
+        folderFieldName: String = "folderPath"// MUST match backend: req.body.folderPath
     ): String {
         val mime = context.contentResolver.getType(uri) ?: "image/*"
         val filename = guessFileName(context, uri)
 
         val fileBody = uriAsRequestBody(context, uri, mime)
 
-        val multipart = MultipartBody.Builder()
+        val multipartBuilder = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
-            .addFormDataPart(formFieldName, filename, fileBody)
+        // text part first (optional)
+        val cleanFolder = folderPath?.trim().orEmpty()
+        if (cleanFolder.isNotEmpty()) {
+            multipartBuilder.addFormDataPart(folderFieldName, cleanFolder)
+        }
+
+        // file part
+        val multipart = multipartBuilder
+            .addFormDataPart(fileFieldName, filename, fileBody)
             .build()
 
         val request = Request.Builder()
@@ -53,25 +65,24 @@ class UploadRepository(
             .post(multipart)
             .build()
 
-        // OkHttp's execute() is blocking, but we're in a suspend function so you must call this
-        // from Dispatchers.IO (or a ViewModel scope configured for IO).
         client.newCall(request).execute().use { resp ->
-            val body = resp.body.string().orEmpty()
+            val body = resp.body?.string().orEmpty()
             if (!resp.isSuccessful) throw IOException("Upload failed: HTTP ${resp.code} $body")
             return body
         }
     }
 
     /**
-     * Upload multiple image Uris (e.g., your first 5).
-     * @return List of responses (one per upload). Throws if any upload fails.
+     * Upload multiple image Uris (e.g., your first 5) to the same folderPath.
      */
     @Throws(IOException::class)
     suspend fun uploadImageUris(
         context: Context,
         uris: List<Uri>,
         uploadUrl: String,
-        formFieldName: String = "image"
+        folderPath: String? = null,
+        fileFieldName: String = "file",
+        folderFieldName: String = "folderPath"
     ): List<String> {
         val results = ArrayList<String>(uris.size)
         for (uri in uris) {
@@ -79,7 +90,9 @@ class UploadRepository(
                 context = context,
                 uri = uri,
                 uploadUrl = uploadUrl,
-                formFieldName = formFieldName
+                folderPath = folderPath,
+                fileFieldName = fileFieldName,
+                folderFieldName = folderFieldName
             )
             results.add(resp)
         }
