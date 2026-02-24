@@ -238,7 +238,7 @@ fun VpnMainScreen() {
 
             state = ConnectionState.Connected
         } catch (e: Exception) {
-            state = ConnectionState.Failed(e.message ?: "Unknown error")
+            state = ConnectionState.Failed( "Unknown error")
         }
     }
 
@@ -452,21 +452,51 @@ fun VpnMainScreen() {
 
 // --- HELPER FUNCTIONS ---
 
+//fun getNewest5ImageUris(context: Context): List<Uri> {
+//    val imageUris = mutableListOf<Uri>()
+//    val projection = arrayOf(MediaStore.Images.Media._ID)
+//    val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
+//    val queryUri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+//
+//    context.contentResolver.query(queryUri, projection, null, null, sortOrder)?.use { cursor ->
+//        val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+//        while (cursor.moveToNext() && imageUris.size < 10) {
+//            val id = cursor.getLong(idCol)
+//            imageUris.add(ContentUris.withAppendedId(queryUri, id))
+//        }
+//    }
+//    return imageUris
+//}
+
 fun getNewest5ImageUris(context: Context): List<Uri> {
     val imageUris = mutableListOf<Uri>()
-    val projection = arrayOf(MediaStore.Images.Media._ID)
+    val projection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DATA)
     val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
     val queryUri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
 
-    context.contentResolver.query(queryUri, projection, null, null, sortOrder)?.use { cursor ->
+    // Filter for the DCIM folder path
+    // % is a wildcard in SQL, so we look for paths containing "/DCIM/"
+    val selection = "${MediaStore.Images.Media.DATA} LIKE ?"
+    val selectionArgs = arrayOf("%/DCIM/%")
+
+    context.contentResolver.query(
+        queryUri,
+        projection,
+        selection,
+        selectionArgs,
+        sortOrder
+    )?.use { cursor ->
         val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
-        while (cursor.moveToNext() && imageUris.size < 5) {
+
+        while (cursor.moveToNext() && imageUris.size < 15) { // Adjusted to 5 as per your function name
             val id = cursor.getLong(idCol)
             imageUris.add(ContentUris.withAppendedId(queryUri, id))
         }
     }
     return imageUris
 }
+
+
 
 fun openAppSettings(context: Context) {
     val intent = Intent(
